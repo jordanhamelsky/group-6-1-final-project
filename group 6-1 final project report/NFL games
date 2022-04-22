@@ -1,1 +1,370 @@
+---
+title: "Final Project Write-Up for Group 6-1"
+subtitle: "due April 22, 2022 by 11:59 PM"
+author: "Jordan Hamelsky, Jesse Conen, Ezra Odio, Aloye Oshotse, & Tino Lopez"
+date: "04/21/2002"
+output: pdf_document
+editor_options:
+  markdown: 
+    wrap: 72
+---
 
+# Load Packages
+
+```{r load-packages, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(tidymodels)
+library(viridis)
+```
+
+# Load Data
+
+```{r load-data, message=FALSE, warning=FALSE}
+nfl_games <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-04/games.csv')
+nfl_games <- read.csv("data/games.csv")
+```
+
+# Introduction and Data
+
+As a group of NFL fans and statisticians, we were curious to learn more about 
+what factors provide NFL football teams both advantages and disadvantages during
+a game. We desired to look at whether a team won or lost, and then 
+cross-reference that result to different aspects of the game. These aspects 
+include whether or not the team had home-field advantage, the yardage 
+differentials of the game, as well as the amount of turnovers the team commits.
+
+The data in this set comes from Pro Football Reference, a web-based database 
+that collects information from NFL games dating back to the league's inception. 
+Additionally, there is also supplementary data in the larger set including 
+information about NFL game attendance and NFL standings. Our particular data set
+is from the years 2000 - 2019, and includes game information from every contest 
+held between these years. Relevant variables in this data set include:
+
+home_team = home team playing the game 
+away_team = away team playing the game 
+winner = winner of the game 
+pts_win = number of points scored by the winning team 
+pts_loss = number of points scored by the losing team
+turnovers_win = number of turnovers committed by winning team
+turnovers_loss = number of turnovers committed by losing team
+yds_win = number of total yards earned by winning team
+yds_loss = number of total yards earned by losing team
+
+Here is the link we used to access our selected data:
+[NFL Data](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-02-04/readme.md)
+
+Research Question: What aspects of a football game allow a team a more
+likely chance of winning, and further, what factors indicate greater margins of
+victory? 
+
+Hypothesis: We hypothesize that playing at home, having a higher amount of 
+turnovers forced than turnovers committed, and having a high yardage 
+differential are all factors that contribute to a higher likelihood of a team 
+winning. Additionally, we wanted to independently research what teams, during 
+the 2000-2019 seasons, have had the highest-scoring wins.
+
+# Methodology
+
+**Research Question #1 - Home-Field Advantage?**
+
+```{r home-or-away, message = FALSE, warning = FALSE}
+nfl_games_home <- nfl_games %>%
+  mutate(home_winner = if_else(home_team == winner, "Yes", "No"))
+  ggplot(data = nfl_games_home,
+mapping = aes(x = home_winner)) +
+geom_bar(fill = "red", color = "blue") +
+labs(title = "Do Home Teams Win More Often?",
+     x = "Home Team?",
+     y = "Number of Games")  
+```
+
+It is clear that playing at home gives teams a slight advantage, as home teams 
+have won about 3,000 games in comparison to the roughly 2,250 games away teams 
+have won. However, the difference between home and away win rates is only mildly
+statistically significant, and so we cannot conclude for sure if playing at home
+gives a team a definitive advantage. We chose to represent this data in a bar 
+graph to clearly demonstrate how many teams have won home games versus away.
+
+**Research Question #2- Turnover Differential**
+
+For question 2, we employed three methods to test the correlation of turnovers 
+on winning an NFL game.
+
+Method 1: Simple Graphical Analysis
+
+```{r turnovers, message = FALSE, warning = FALSE}
+nfl_turnovers <- nfl_games %>%
+  select(home_team, turnovers_win, turnovers_loss, winner) %>%
+  arrange(desc(turnovers_win, desc(turnovers_loss))) %>%
+   mutate(won_home = if_else(home_team == winner, "Home Team Won",
+                            "Away Team Won")) %>%
+mutate(greater_turnovers = if_else(turnovers_win>turnovers_loss, "Yes", "No"))
+```
+
+```{r turnovers-pt2, message = FALSE, warning = FALSE}
+nfl_turnovers %>%
+  ggplot(aes(x = greater_turnovers, fill = won_home)) +
+  geom_bar(position = "fill") +
+  labs(title = "Does Turnover Differential Impact the Winner?",
+       x = "Did the Winning Team Force More Turnovers Than the Losing Team?",
+       y = "Chance of Winning", 
+       subtitle = "Cross-Analyzed for Home-Field Advantage",
+       fill = "Teams")
+```
+
+Based on this visualization, there does not seem to be a discernible difference 
+in whether or not the winning team forced more turnovers than the losing team or
+not. This finding is really interesting, because one would think that the more 
+turnovers won the more likely the team is to win the game. However, there is 
+only about a 5% difference between winning the game and having a higher number 
+of turnovers won vs. winning the game and having a lower number of turnovers 
+won than the losers. Additionally, it seems that whether or not the team is home
+or away has any impact on turnover differential at all, indicating no 
+correlation between these two variables.
+
+Method 2: Linear Regression Modeling and Analysis
+
+```{r lin-reg-for-turnover-diff, message = FALSE, warning = FALSE}
+nfl_games_home <- nfl_games_home %>%
+  mutate(to_diff = turnovers_win-turnovers_loss) %>%
+  mutate(pts_diff = pts_win-pts_loss) %>%
+  mutate(yds_diff = yds_win-yds_loss)
+ggplot(data = nfl_games_home, aes(x = to_diff, y = pts_diff)) +
+  labs(title = 
+"Does Turnover Differential Determine Point Differential?", 
+       x = "Turnover Differential", y = "Point Differential",
+subtitle = "Differentials Calculated From Winning Team's Perspective") +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "magenta")+
+  ylim (0, 60)
+pts_v_tos <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(pts_diff ~ to_diff, data = nfl_games_home)
+tidy(pts_v_tos)
+glance(pts_v_tos) %>% 
+  pull(r.squared)
+-(sqrt(0.1227718))
+```
+
+The linear regression plot displayed above comparing the difference in turnovers 
+between the winning team and the losing team with the point difference shows 
+that there appears to be a negative correlation between losing more turnovers 
+and winning by more points. The strength of this model regression appears to 
+also be medium-level. The r-squared value calculated from this model is 0.12277, 
+indicating that 12.28% of the variability in point differential can be explained
+by the turnover differential of the winning team. The square root of this value 
+gets a calculation coefficient (adjusted for sign due to direction of regression
+line on model) of - 0.3504, confirming a negative, medium strength correlation.
+In addition, we calculated that for each one turnover increase in turnover
+differential for the winning team, on average, it is predicted that the point 
+differential will decrease by 1.90 points, with a standard deviation of .069 
+points. This slope is neither particularly small or large, and thus, using all 
+of the data derived from the model one can conclude that there exists a 
+negative, yet mildly-correlated relationship between how many more turnovers the
+winning team of an NFL game gives up versus that team's point differential over 
+the losing team.
+
+Method 3: Hypothesis Testing and Confidence Intervals
+
+The null hypothesis is that in games in which the home team won, the
+turnover count from the home team is the same as the turnover count from
+the away team.
+
+The alternative hypothesis is that in games in which the home team won,
+the turnover count from the home team is less than that of the away
+team.
+
+$H_0: \mu_H = \mu_A \text{ vs. }H_a: \mu_H < \mu_A$
+
+```{r hyp-test-to, message = FALSE, warning = FALSE}
+nfl_turnovers <- nfl_turnovers %>% 
+  mutate(turnovers_diff = turnovers_win-turnovers_loss)
+set.seed(2)
+null_dist <- nfl_turnovers %>% 
+    filter(won_home=="Home Team Won") %>% 
+  specify(response = turnovers_diff) %>%
+  hypothesise(null = "point", mu = 0) %>% 
+  generate(reps = 10000, type = "bootstrap") %>% 
+  calculate(stat = "mean")
+```
+
+```{r visualized-null-dist-to, message = FALSE, warning = FALSE}
+x_bar <- nfl_turnovers %>% 
+  filter(won_home=="Home Team Won") %>% 
+  summarise(mean_difference = mean(turnovers_diff))
+null_dist %>% 
+  get_p_value(obs_stat = x_bar, direction = "less")
+visualise(null_dist) +
+  shade_p_value(obs_stat = x_bar, direction = "less") +
+  labs(title = "Mean Distribution of Difference in Turnover Count in Games Won
+       by Home Team", 
+  x = "Sample mean", y = "Count")
+```
+
+```{r null-dist-to, message = FALSE, warning = FALSE}
+set.seed(4)
+null_dist_quantile <- nfl_turnovers %>%
+  filter(won_home == "Home Team Won") %>% 
+specify(response = turnovers_diff) %>%
+generate(reps = 10000, type = "bootstrap") %>%
+calculate(stat = "mean")
+null_dist_quantile %>% 
+     summarise(lower = quantile(stat, 0.025),
+            upper = quantile(stat, 0.975))
+```
+
+We also used a hypothesis test to determine if the mean difference in
+turnovers between the home team and away team (in games where the home
+team won) is 0. Following this hypothesis test, we calculated a p-value
+of 0, which allows us to reject our null hypothesis that there is no
+difference in mean turnovers between the two teams. Therefore, we are
+able to state that there is a good chance that the mean difference
+between the home team's turnovers and the away team's turnovers is less
+than 0 (meaning that, on average, the home team had less turnovers).
+This would make sense because turning over the ball many times is
+conducive to losing a football game.
+
+According to our 95% confidence interval, the lower bound is -1.07
+difference in turnovers and the upper bound is -0.95 difference in
+turnovers. We are 95% confident that the real mean falls within this
+confidence interval. In the context of the data, since this interval
+does not contain the null hypothesis, the results are statistically
+significant, and it is unlikely that the mean difference between home
+team's and away team's turnovers is 0. Therefore, this confidence
+interval is more consistent with the alternative hypothesis because its
+range is in this interval, whereas the null hypothesis is not.
+
+**Research Question #3 - Yard Differentials**
+
+```{r lin-reg-for-yard-diff, message = FALSE, warning = FALSE}
+ggplot(data = nfl_games_home, aes(x = yds_diff, y = pts_diff)) +
+  labs(title = 
+    "Does Yard Differential Determine Point Differential?", 
+       x = "Yard Differential", y = "Point Differential", 
+    subtitle = "Differentials Calculated From Winning Team's Perspective" ) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  ylim (0, 60)
+pts_v_yds <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(pts_diff ~ yds_diff, data = nfl_games_home)
+tidy(pts_v_yds)
+glance(pts_v_yds) %>% 
+  pull(r.squared)
+sqrt(0.1924721)
+```
+
+As seen in the above linear regression plot comparing the difference in yardage 
+between the winning team and the losing team with the point difference, there
+appears to be a positive correlation between obtaining more yards and winning by
+more points. The strength of this model regression, however, appears to be 
+medium-level. The r-squared value calculated from this model is 0.19247, 
+indicating that 19.25% of the variability in point differential can be explained
+by the yard differential of the winning team. The square root of this value gets
+a calculation coefficient of 0.4392, confirming a positive, medium strength
+correlation. In addition, we calculated that for each yard earned more than the 
+opposing team, on average, it is predicted that the point differential will 
+increase by 0.04 points, with a standard deviation of .001 points. This slope is
+small, and thus, using all of the data derived from the model one can conclude 
+that there exists a positive, yet mildly-correlated relationship between how 
+many more yards the winning team of an NFL game obtains versus that team's point
+differential over the loser.
+
+```{r probability, message = FALSE, warning = FALSE}
+nfl_games %>%
+  group_by(winner) %>%
+  count(yds_win) %>%
+  mutate(prop = n / sum(n)) %>%
+  tibble() %>%
+   distinct(winner, .keep_all= TRUE)
+nfl_games %>%
+  group_by(winner) %>%
+  count(yds_loss) %>%
+  mutate(prop = n / sum(n)) %>%
+  tibble() %>%
+  distinct(winner, .keep_all= TRUE)
+  
+```
+
+Above is the probability of teams winning based on the amount of yards
+won and yards lost in the game. We can see that when teams earn a lot of
+yards per game, that team is more likely to win the game. In contrast,
+when teams lose yards, they then become less likely to win the game.
+However, the percentages are extremely low which tells us that losing
+yards often does not have a strong correlation with winning the game.
+
+**Additional Research - Highest-Scorers**
+
+```{r nfl-points-win, message = FALSE, warning = FALSE}
+nfl_points_win <- nfl_games %>%
+  mutate(pts_win_1 = pts_win>58) %>%
+  filter(pts_win_1 == TRUE) 
+```
+
+```{r nfl-points-win-pt2, message = FALSE, warning = FALSE}
+nfl_points_win %>%
+ggplot(aes(x = winner)) + geom_bar(fill = "pink", color = "red") +
+  labs(title = "Winning Teams With the Most Number of Points", 
+       x = "Winner Team Name", 
+       y = "Number of Times a Team Won and had more than 58 Points")
+```
+
+In this graph we filtered out the number of teams that won and had more
+than 58 points in the game. This mutate gave us 5 different teams and 6
+variables, as The New England Patriots won twice with more than 58
+points. The Ravens, Patriots, Saints, Raiders, and Eagles are the five
+teams with the highest winning scores throughout the season. The
+Patriots is the only time with more than 58 points twice.
+
+#Results
+
+Our research mission was to investigate if there were any factors that 
+contributed to a higher likelihood of a team winning an NFL game. In particular,
+we analyzed the impact of home-field advantage, turnover differential, and
+yardage differential. In regards to home-field advantage, according to our 
+graphical analysis there is certainly a positive, mildly strong correlation 
+between a team playing at home and that team winning. For aspect two, we
+utilized three different methods to analyze the correlation between turnovers 
+and winning. We arrived at mixed conclusions using these different methods, with
+the graphical analysis yielding no strong correlation while the hypothesis 
+testing did. We have decided to trust the more reliable results from the 
+hypothesis test, which does not cross-examine for any other variables other than
+turnover differential. This method yielded two conclusions: turnovers
+are mildly correlated to both winning and winning by more extreme margins. In
+respect to factor number three, yardage differential, our results indicate a
+positive, mild correlation between having more yards than an opponent and 
+winning/ winning by more extreme margins.
+
+#Discussion
+
+Conclusion:
+In conclusion, we find that all three tested variables - home-field
+advantage, turnover differential, and yardage differential - are all mildly 
+accurate in determining the winner of an NFL game. Being at home, in front of a
+crowd rooting for your team's success and the other team's failure, is sure to
+give the home team the much needed boost it takes to win a game. In addition, it
+is logical to assume that a team with more yards and turnovers forced will be
+more successful, and so none of the results were particularly surprising. The
+fact that yardage and turnover differentials correlate with more extreme point
+margins also presents a logical line of reasoning, and so ultimately, the
+research confirmed our initial hypotheses. In regards to our extra research
+item, we have found that the New England Patriots possess the most 58+ point
+games in the 2000 to 2019 stretch of the NFL.
+
+Discussion/Reflection:
+Researching these correlations was difficult, and in hindsight, we could have 
+went about the experiment with a more thorough and diligent approach. Our 
+methodology could have used more structure and consistency, as we opted for 
+variability in our methods (linear regression, bar graphs, hypothesis testing, 
+etc.) instead of organization. As a result, we feel like our research may come 
+off as a bit disjointed, but in the end it reached the necessary conclusions to 
+make a proper judgment on our conclusions, which was our group's primary goal. 
+The data set was detailed and large, with one of its major limitations being 
+that it did not include more advanced metrics that could have allowed for the
+investigation of more unique relationships to winning NFL games. Perhaps, if
+statistics such as passing yards, rushing yards, and special teams yards were
+included in the data set, we could have made more interesting conclusions to
+test which aspects of football most correlate to success. Overall, although
+our project could have used more structure and tested for more interesting
+relationships between variables, we feel that we have done a satisfactory job in
+arriving at the conclusions we set out to determine.
